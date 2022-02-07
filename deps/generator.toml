@@ -1,0 +1,16 @@
+[general]
+library_name = "libcatalyst"
+output_file_path = "../src/api.jl"
+module_name = "API"
+jll_pkg_name = "Catalyst_jll"
+prologue_file_path = "./prologue.jl"
+use_deterministic_symbol = true
+output_ignorelist = [
+    "CATALYST_EXPORT",
+    "CATALYST_NO_EXPORT",
+    "CATALYST_DEPRECATED",
+    "CATALYST_DEPRECATED_EXPORT",
+    "CATALYST_DEPRECATED_NO_EXPORT",
+    "CONDUIT_CPP_COMPILER",
+    "CONDUIT_SYSTEM_TYPE",
+]
