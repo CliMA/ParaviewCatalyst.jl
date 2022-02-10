@@ -47,8 +47,7 @@ const PARAVIEW_CATALYST_PATHS = [
 ]
 end
 
-function catalyst_io_pipeline(;channel="input", filename="")
-    node = ConduitNode()
+function catalyst_io_pipeline!(node::ConduitNode; filename="", channel="input")
 	node["catalyst/pipelines/output/type"] = "io"
 	node["catalyst/pipelines/output/channel"] = channel
 	node["catalyst/pipelines/output/filename"] = filename
@@ -63,10 +62,10 @@ function catalyst_initialize(node::ConduitNode)
     return
 end
 
-function catalyst_initialize()
+function catalyst_initialize(;libpath=nothing)
     ConduitNode() do node
 	    node["catalyst_load/implementation"] = "paraview"
-	    node["catalyst_load/search_paths/paraview"] = Defaults.PARAVIEW_CATALYST_PATHS[2]
+	    node["catalyst_load/search_paths/paraview"] = libpath === nothing ? Defaults.PARAVIEW_CATALYST_PATHS[2] : libpath
 	    node["catalyst/scripts/catalyst_pipeline/filename"] = joinpath(@__DIR__, "catalyst_pipeline.py")
         catalyst_initialize(node)
     end
@@ -84,27 +83,29 @@ function catalyst_about()
     return
 end
 
-function catalyst_execute()
-    ConduitNode() do node
-        node["catalyst/state/timestep"] = 0
-        node["catalyst/state/time"] = 0.0
-        node["catalyst/channels/input/type"] = "mesh"
-        mesh_node = Conduit.example_braid_mesh()
-        GC.@preserve mesh_node begin
-            node["catalyst/channels/input/data"] = mesh_node
-        end
-        Conduit.destroy(mesh_node)
-        catalyst_execute(node)
-    end
-    return
-end
-
 function catalyst_execute(node::ConduitNode)
     status = API.catalyst_execute(node)
     if status != API.catalyst_status_ok
         error_status(status)
     end
     return node
+end
+function catalyst_execute(;debuginfo = false)
+    ConduitNode() do node
+        node["catalyst/state/timestep"] = 0
+        node["catalyst/state/time"] = 0.0
+        node["catalyst/channels/input/type"] = "mesh"
+        Conduit.example_braid_mesh() do mesh_node
+            node["catalyst/channels/input/data"] = mesh_node
+        end
+        if debuginfo
+            Conduit.node_info(node) do info_node
+                Conduit.node_print(info_node)
+            end
+        end
+        catalyst_execute(node)
+    end
+    return
 end
 
 function catalyst_results(node::ConduitNode)
@@ -114,7 +115,6 @@ function catalyst_results(node::ConduitNode)
     end
     return node
 end
-
 function catalyst_results()
     ConduitNode() do node
         catalyst_results(node)
@@ -122,6 +122,7 @@ function catalyst_results()
     end
 end
 
+#TODO: implement when we have a RW API
 function catalyst_replay end
 
 function catalyst_finalize(node::ConduitNode)
@@ -131,7 +132,6 @@ function catalyst_finalize(node::ConduitNode)
     end
     return node
 end
-
 function catalyst_finalize()
     ConduitNode() do node
         catalyst_finalize(node)

@@ -1,6 +1,8 @@
 from paraview.simple import *
 from paraview import catalyst
 
+# Stub implementation for now to just trigger the pipeline for live updates
+
 # registrationName must match the channel name used in the 'CatalystAdaptor'.
 producer = TrivialProducer(registrationName="input")
 
@@ -10,10 +12,5 @@ options.EnableCatalystLive = 1
 def catalyst_execute(info):
     global producer
     global options
-
-    print("-----------------------------------")
-    print("executing (timestep={}, time={})".format(info.timestep, info.time))
     producer.UpdatePipeline()
-    print("bounds:", producer.GetDataInformation().GetBounds())
-
     SaveExtractsUsingCatalystOptions(options)

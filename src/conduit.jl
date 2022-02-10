@@ -1,7 +1,5 @@
 module Conduit
 
-import JSON3
-
 import ..API
 
 struct ConduitNode
@@ -19,38 +17,35 @@ function ConduitNode(f::Function)
     try
 	    f(node)
     finally
-	    node_destroy(node)
+	    node_destroy!(node)
     end
     return nothing
 end
 
-#=
-for num_type in (:UInt8, :Int8, :UInt16, :Int16, :UInt32, :Int32, :UInt64, :Int64, :Float32, :Float64)
-    conduit_num = symbol(lower("$numtype"))
-end
-=#
+Base.setindex!(node::ConduitNode, val, path::String) = node_set!(node, path, val)
 
-function Base.setindex!(node::ConduitNode, val::Int64, path::String)
-    API.conduit_node_set_path_int64(node, path, val)
-    return node
+for numtype in (:UInt8, :Int8, :UInt16, :Int16, :UInt32, :Int32, :UInt64, :Int64, :Float32, :Float64)
+    cnumtype = Symbol(lowercase("$(numtype)"))
+    node_set_path = Symbol("conduit_node_set_path_$(cnumtype)")
+    node_set_path_ptr = Symbol("conduit_node_set_path_$(cnumtype)_ptr")
+    @eval begin
+        function node_set!(node::ConduitNode, path::String, val::$numtype)
+            API.$node_set_path(node, path, val)
+            return node
+        end
+        function node_set!(node::ConduitNode, path::String, val::Array{$numtype})
+            API.$node_set_path_ptr(node, path, pointer(val), length(val))
+            return node
+        end
+    end
 end
 
-function Base.setindex!(node::ConduitNode, val::Float64, path::String)
-    API.conduit_node_set_path_double(node, path, val)
-    return node
-end
-
-function Base.setindex!(node::ConduitNode, val::String, path::String)
+function node_set!(node::ConduitNode, path::String, val::String)
     API.conduit_node_set_path_char8_str(node, path, val)
     return node
 end
 
-function Base.setindex!(node::ConduitNode, val::Array{Float64}, path::String)
-    API.conduit_node_set_path_float64_ptr(node, path, pointer(val), length(val))
-    return node
-end
-
-function Base.setindex!(node::ConduitNode, val::ConduitNode, path::String)
+function node_set!(node::ConduitNode, path::String, val::ConduitNode)
     API.conduit_node_set_path_node(node, path, val)
     return node
 end
@@ -61,10 +56,6 @@ end
 
 function node_path(node::ConduitNode)
     return unsafe_string(API.conduit_node_path(node))
-end
-
-function node_dtype(node::ConduitNode)
-    return API.conduit_node_dtype(node)
 end
 
 function node_remove_path!(node::ConduitNode, path::String)
@@ -87,7 +78,22 @@ function node_update_external!(dest_node::ConduitNode, src_node::ConduitNode)
     return dest_node
 end
 
-function node_destroy(node::ConduitNode)
+function node_info!(dest_node::ConduitNode, src_node::ConduitNode)
+    API.conduit_node_info(src_node, dest_node)
+    return dest_node
+end
+function node_info(f::Function, node::ConduitNode)
+    info = ConduitNode()
+    try
+        node_info!(info, node)
+        f(info)
+    finally
+	    node_destroy!(info)
+    end
+    return
+end
+
+function node_destroy!(node::ConduitNode)
     API.conduit_node_destroy(node)
     return nothing
 end
@@ -99,6 +105,26 @@ function node_print(node::ConduitNode; detailed = false)
 	    API.conduit_node_print(node)
     end
     return
+end
+
+function node_print_string(node::ConduitNode; detailed = false)
+    output_buffer = IOBuffer()
+    default_stdout = stdout
+
+    pipe = Pipe()
+    Base.link_pipe!(pipe; reader_supports_async = true, writer_supports_async = true)
+    pe_stdout = pipe.in
+    redirect_stdout(pe_stdout)
+
+    buffer_redirect_task = @async write(output_buffer, pipe)
+    try
+        node_print(node; detailed);
+    finally
+        redirect_stdout(default_stdout)
+        close(pe_stdout)
+        wait(buffer_redirect_task)
+    end
+    return String(take!(output_buffer))
 end
 
 function about()
@@ -122,6 +148,19 @@ function example_braid_mesh(;mesh = "hexs", nx = 50, ny = 50, nz = 50)
         API.conduit_blueprint_mesh_examples_braid(mesh, nx, ny, nz, node)
     end
     return node
+end
+
+for example in (:example_basic_mesh, :example_braid_mesh)
+    @eval begin
+        function ($example)(f::Function; kw...)
+            node = ($example)(; kw...)
+            try
+                f(node)
+            finally
+                node_destroy!(node)
+            end
+        end
+    end
 end
 
 end
